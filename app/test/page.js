@@ -193,7 +193,7 @@ async function submitToSheets(result) {
     await fetch("/api/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(result),
+      body: JSON.stringify(result), keepalive: true,
     });
   } catch (e) {
     console.warn("결과 전송 실패:", e);
