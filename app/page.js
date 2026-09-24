@@ -103,6 +103,19 @@ export default function HomePage() {
           약 15~20분 소요 · 총 40문제
         </p>
       </form>
+
+      <div style={{ marginTop: "auto", paddingTop: 40, textAlign: "center" }}>
+        <a
+          href="/admin"
+          style={{
+            fontSize: 12,
+            color: "var(--gray-300)",
+            textDecoration: "none",
+          }}
+        >
+          관리자
+        </a>
+      </div>
     </div>
   );
 }
