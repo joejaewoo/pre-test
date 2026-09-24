@@ -36,50 +36,17 @@ export default function AdminPage() {
     }
   }, []);
 
-  // 데이터 로드 (JSONP 방식 — CORS 문제 우회)
+  // 데이터 로드 (자체 API)
   const loadResults = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const url = process.env.NEXT_PUBLIC_GOOGLE_SCRIPT_URL;
-    if (!url) {
-      setError("Google Script URL이 설정되지 않았습니다.\nVercel 환경변수에 NEXT_PUBLIC_GOOGLE_SCRIPT_URL을 추가하세요.");
-      setLoading(false);
-      return;
-    }
 
     try {
-      // JSONP로 CORS 우회
-      const data = await new Promise((resolve, reject) => {
-        const callbackName = "_gsCb" + Date.now();
-        const timeout = setTimeout(() => {
-          cleanup();
-          reject(new Error("응답 시간 초과 (30초). 페이지를 새로고침 후 다시 시도해주세요."));
-        }, 30000);
-
-        function cleanup() {
-          clearTimeout(timeout);
-          delete window[callbackName];
-          const el = document.getElementById(callbackName);
-          if (el) el.remove();
-        }
-
-        window[callbackName] = function (response) {
-          cleanup();
-          resolve(response);
-        };
-
-        const script = document.createElement("script");
-        script.id = callbackName;
-        script.src = `${url}?action=getResults&callback=${callbackName}`;
-        script.onerror = () => {
-          cleanup();
-          reject(new Error("스크립트 로드 실패. Google Script URL을 확인하세요."));
-        };
-        document.body.appendChild(script);
-      });
+      const res = await fetch("/api/results");
+      const data = await res.json();
 
       if (data.success) {
-        setResults(data.data.reverse());
+        setResults(data.data);
       } else {
         setError(data.error || "데이터를 불러오지 못했습니다.");
       }
@@ -150,18 +117,18 @@ export default function AdminPage() {
   // 필터링 & 정렬
   let filtered = results;
   if (filter !== "all") {
-    filtered = filtered.filter((r) => r["Set"] === `Set ${filter}`);
+    filtered = filtered.filter((r) => r.set === filter);
   }
   if (gradeFilter !== "all") {
-    filtered = filtered.filter((r) => r["학년"] === gradeFilter);
+    filtered = filtered.filter((r) => r.grade === gradeFilter);
   }
   if (search.trim()) {
     const q = search.trim().toLowerCase();
     filtered = filtered.filter(
       (r) =>
-        (r["이름"] || "").toLowerCase().includes(q) ||
-        (r["학교"] || "").toLowerCase().includes(q) ||
-        (r["학부모연락처"] || "").includes(q)
+        (r.studentName || "").toLowerCase().includes(q) ||
+        (r.school || "").toLowerCase().includes(q) ||
+        (r.parentPhone || "").includes(q)
     );
   }
 
@@ -169,24 +136,24 @@ export default function AdminPage() {
   const sorted = [...filtered].sort((a, b) => {
     switch (sortBy) {
       case "name":
-        return (a["이름"] || "").localeCompare(b["이름"] || "");
+        return (a.studentName || "").localeCompare(b.studentName || "");
       case "score":
-        return (Number(b["점수"]) || 0) - (Number(a["점수"]) || 0);
+        return (Number(b.score) || 0) - (Number(a.score) || 0);
       case "accuracy":
-        return (Number(b["정확도(%)"]) || 0) - (Number(a["정확도(%)"]) || 0);
+        return (Number(b.accuracy) || 0) - (Number(a.accuracy) || 0);
       default: // date — 이미 최신순
         return 0;
     }
   });
 
   const setCounts = {
-    A: results.filter((r) => r["Set"] === "Set A").length,
-    B: results.filter((r) => r["Set"] === "Set B").length,
-    C: results.filter((r) => r["Set"] === "Set C").length,
-    D: results.filter((r) => r["Set"] === "Set D").length,
+    A: results.filter((r) => r.set === "A").length,
+    B: results.filter((r) => r.set === "B").length,
+    C: results.filter((r) => r.set === "C").length,
+    D: results.filter((r) => r.set === "D").length,
   };
 
-  const grades = [...new Set(results.map((r) => r["학년"]).filter(Boolean))].sort();
+  const grades = [...new Set(results.map((r) => r.grade).filter(Boolean))].sort();
 
   return (
     <div className="page" style={{ maxWidth: 960 }}>
@@ -210,7 +177,7 @@ export default function AdminPage() {
       <p style={{ fontSize: 13, color: "var(--gray-500)", marginBottom: 20 }}>
         총 {results.length}명 응시 · 마지막 업데이트:{" "}
         {results.length > 0
-          ? new Date(results[0]["타임스탬프"]).toLocaleDateString("ko-KR")
+          ? new Date(results[0].timestamp).toLocaleDateString("ko-KR")
           : "-"}
       </p>
 
@@ -349,8 +316,8 @@ export default function AdminPage() {
                 </tr>
               ) : (
                 sorted.map((r, i) => {
-                  const setLetter = (r["Set"] || "").replace("Set ", "").toLowerCase();
-                  const ts = r["타임스탬프"];
+                  const setLetter = (r.set || "").toLowerCase();
+                  const ts = r.timestamp;
                   const date = ts
                     ? new Date(ts).toLocaleDateString("ko-KR", {
                         month: "short",
@@ -359,6 +326,8 @@ export default function AdminPage() {
                         minute: "2-digit",
                       })
                     : "-";
+                  const dur = r.duration || 0;
+                  const durStr = Math.floor(dur / 60) + "분 " + (dur % 60) + "초";
                   return (
                     <tr
                       key={i}
@@ -369,16 +338,16 @@ export default function AdminPage() {
                     >
                       <td style={{ fontSize: 12, color: "var(--gray-400)" }}>{i + 1}</td>
                       <td style={{ fontSize: 12, color: "var(--gray-500)", whiteSpace: "nowrap" }}>{date}</td>
-                      <td style={{ fontWeight: 600 }}>{r["이름"]}</td>
-                      <td style={{ fontSize: 13, color: "var(--gray-600)" }}>{r["학교"] || "-"}</td>
-                      <td>{r["학년"]}</td>
+                      <td style={{ fontWeight: 600 }}>{r.studentName}</td>
+                      <td style={{ fontSize: 13, color: "var(--gray-600)" }}>{r.school || "-"}</td>
+                      <td>{r.grade}</td>
                       <td>
-                        <span className={`set-tag set-tag--${setLetter}`}>{r["Set"]}</span>
+                        <span className={`set-tag set-tag--${setLetter}`}>Set {r.set}</span>
                       </td>
-                      <td style={{ fontWeight: 600 }}>{r["점수"]}</td>
-                      <td>{r["정확도(%)"]}%</td>
+                      <td style={{ fontWeight: 600 }}>{r.score}</td>
+                      <td>{r.accuracy}%</td>
                       <td style={{ fontSize: 12, color: "var(--gray-500)", whiteSpace: "nowrap" }}>
-                        {r["소요시간(초)"]}
+                        {durStr}
                       </td>
                     </tr>
                   );
@@ -421,7 +390,7 @@ export default function AdminPage() {
  */
 function StudentDetailModal({ student, onClose }) {
   const r = student;
-  const setLetter = (r["Set"] || "").replace("Set ", "");
+  const setLetter = (r.set || "").toUpperCase();
   const setColor = {
     A: "var(--set-a)",
     B: "var(--set-b)",
@@ -441,7 +410,7 @@ function StudentDetailModal({ student, onClose }) {
     D: "Advanced",
   }[setLetter] || "";
 
-  const ts = r["타임스탬프"];
+  const ts = r.timestamp;
   const dateStr = ts
     ? new Date(ts).toLocaleDateString("ko-KR", {
         year: "numeric",
@@ -451,6 +420,8 @@ function StudentDetailModal({ student, onClose }) {
         minute: "2-digit",
       })
     : "-";
+  const dur = r.duration || 0;
+  const durStr = Math.floor(dur / 60) + "분 " + (dur % 60) + "초";
 
   return (
     <div
@@ -508,7 +479,7 @@ function StudentDetailModal({ student, onClose }) {
             Set {setLetter} · {setLabel}
           </div>
           <div style={{ fontSize: 13, color: "var(--gray-500)", marginTop: 4 }}>
-            종합 점수 {r["점수"]}점
+            종합 점수 {r.score}점
           </div>
         </div>
 
@@ -519,10 +490,10 @@ function StudentDetailModal({ student, onClose }) {
               학생 정보
             </h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 16px" }}>
-              <InfoItem label="이름" value={r["이름"]} />
-              <InfoItem label="학년" value={r["학년"]} />
-              <InfoItem label="학교" value={r["학교"] || "-"} />
-              <InfoItem label="학부모 연락처" value={r["학부모연락처"] || "-"} />
+              <InfoItem label="이름" value={r.studentName} />
+              <InfoItem label="학년" value={r.grade} />
+              <InfoItem label="학교" value={r.school || "-"} />
+              <InfoItem label="학부모 연락처" value={r.parentPhone || "-"} />
               <InfoItem label="응시일" value={dateStr} span={2} />
             </div>
           </div>
@@ -533,9 +504,9 @@ function StudentDetailModal({ student, onClose }) {
               테스트 결과
             </h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-              <StatBox label="정답" value={`${r["정답수"]}/${r["총문제"]}`} />
-              <StatBox label="정확도" value={`${r["정확도(%)"]}%`} />
-              <StatBox label="소요시간" value={r["소요시간(초)"]} />
+              <StatBox label="정답" value={`${r.correctCount}/${r.totalQuestions}`} />
+              <StatBox label="정확도" value={`${r.accuracy}%`} />
+              <StatBox label="소요시간" value={durStr} />
             </div>
           </div>
 
@@ -545,17 +516,17 @@ function StudentDetailModal({ student, onClose }) {
               레벨 분석
             </h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-              <StatBox label="시작 레벨" value={`Lv.${r["시작레벨"]}`} />
-              <StatBox label="최고 도달" value={`Lv.${r["최고레벨"]}`} />
-              <StatBox label="최종 레벨" value={`Lv.${r["최종레벨"]}`} />
+              <StatBox label="시작 레벨" value={`Lv.${r.startLevel}`} />
+              <StatBox label="최고 도달" value={`Lv.${r.maxLevel}`} />
+              <StatBox label="최종 레벨" value={`Lv.${r.finalLevel}`} />
             </div>
             {/* 레벨 시각화 바 */}
             <div style={{ marginTop: 12 }}>
               <div style={{ display: "flex", gap: 3 }}>
                 {[1, 2, 3, 4, 5, 6, 7].map((lv) => {
-                  const startLv = Number(r["시작레벨"]) || 1;
-                  const maxLv = Number(r["최고레벨"]) || 1;
-                  const finalLv = Math.round(Number(r["최종레벨"]) || 1);
+                  const startLv = Number(r.startLevel) || 1;
+                  const maxLv = Number(r.maxLevel) || 1;
+                  const finalLv = Math.round(Number(r.finalLevel) || 1);
                   let bg = "var(--gray-200)";
                   if (lv <= maxLv) bg = "var(--primary-light)";
                   if (lv <= finalLv) bg = "var(--primary)";

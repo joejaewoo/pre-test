@@ -186,20 +186,16 @@ export default function TestPage() {
 }
 
 /**
- * Google Sheets에 결과 전송
+ * 결과 저장 (API)
  */
 async function submitToSheets(result) {
-  const url = process.env.NEXT_PUBLIC_GOOGLE_SCRIPT_URL;
-  if (!url) return;
-
   try {
-    await fetch(url, {
+    await fetch("/api/submit", {
       method: "POST",
-      mode: "no-cors",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "submit", data: result }),
+      body: JSON.stringify(result),
     });
   } catch (e) {
-    console.warn("Google Sheets 전송 실패:", e);
+    console.warn("결과 전송 실패:", e);
   }
 }
