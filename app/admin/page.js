@@ -36,23 +36,52 @@ export default function AdminPage() {
     }
   }, []);
 
-  // 데이터 로드
+  // 데이터 로드 (JSONP 방식 — CORS 문제 우회)
   const loadResults = useCallback(async () => {
     setLoading(true);
     setError(null);
     const url = process.env.NEXT_PUBLIC_GOOGLE_SCRIPT_URL;
     if (!url) {
-      setError("Google Script URL이 설정되지 않았습니다.\n.env.local에 NEXT_PUBLIC_GOOGLE_SCRIPT_URL을 추가하세요.");
+      setError("Google Script URL이 설정되지 않았습니다.\nVercel 환경변수에 NEXT_PUBLIC_GOOGLE_SCRIPT_URL을 추가하세요.");
       setLoading(false);
       return;
     }
+
     try {
-      const res = await fetch(`${url}?action=getResults`);
-      const json = await res.json();
-      if (json.success) {
-        setResults(json.data.reverse());
+      // JSONP로 CORS 우회
+      const data = await new Promise((resolve, reject) => {
+        const callbackName = "_gsCb" + Date.now();
+        const timeout = setTimeout(() => {
+          cleanup();
+          reject(new Error("응답 시간 초과 (10초)"));
+        }, 10000);
+
+        function cleanup() {
+          clearTimeout(timeout);
+          delete window[callbackName];
+          const el = document.getElementById(callbackName);
+          if (el) el.remove();
+        }
+
+        window[callbackName] = function (response) {
+          cleanup();
+          resolve(response);
+        };
+
+        const script = document.createElement("script");
+        script.id = callbackName;
+        script.src = `${url}?action=getResults&callback=${callbackName}`;
+        script.onerror = () => {
+          cleanup();
+          reject(new Error("스크립트 로드 실패. Google Script URL을 확인하세요."));
+        };
+        document.body.appendChild(script);
+      });
+
+      if (data.success) {
+        setResults(data.data.reverse());
       } else {
-        setError(json.error || "데이터를 불러오지 못했습니다.");
+        setError(data.error || "데이터를 불러오지 못했습니다.");
       }
     } catch (e) {
       setError("서버에 연결할 수 없습니다: " + e.message);
