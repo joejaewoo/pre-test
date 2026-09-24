@@ -1,13 +1,31 @@
-import { kv } from "@vercel/kv";
+const UPSTASH_URL = process.env.KV_REST_API_URL;
+const UPSTASH_TOKEN = process.env.KV_REST_API_TOKEN;
+
+async function redis(...args) {
+  const res = await fetch(`${UPSTASH_URL}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${UPSTASH_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(args),
+  });
+  return res.json();
+}
 
 export async function POST(request) {
   try {
+    if (!UPSTASH_URL || !UPSTASH_TOKEN) {
+      return Response.json(
+        { success: false, error: "DB가 연결되지 않았습니다." },
+        { status: 500 }
+      );
+    }
+
     const data = await request.json();
 
-    // ID 생성 (타임스탬프 기반)
-    const id = Date.now().toString();
     const entry = {
-      id,
+      id: Date.now().toString(),
       timestamp: data.timestamp || new Date().toISOString(),
       studentName: data.studentName || "",
       school: data.school || "",
@@ -24,8 +42,7 @@ export async function POST(request) {
       finalLevel: data.finalLevel || 0,
     };
 
-    // KV에 저장: 리스트 앞에 추가 (최신순)
-    await kv.lpush("results", JSON.stringify(entry));
+    await redis("LPUSH", "results", JSON.stringify(entry));
 
     return Response.json({ success: true });
   } catch (err) {

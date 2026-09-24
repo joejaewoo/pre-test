@@ -1,15 +1,32 @@
-import { kv } from "@vercel/kv";
+const UPSTASH_URL = process.env.KV_REST_API_URL;
+const UPSTASH_TOKEN = process.env.KV_REST_API_TOKEN;
+
+async function redis(...args) {
+  const res = await fetch(`${UPSTASH_URL}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${UPSTASH_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(args),
+  });
+  return res.json();
+}
 
 export async function GET() {
   try {
-    // KV에서 전체 결과 가져오기 (최신순)
-    const raw = await kv.lrange("results", 0, -1);
+    if (!UPSTASH_URL || !UPSTASH_TOKEN) {
+      return Response.json(
+        { success: false, error: "DB가 연결되지 않았습니다." },
+        { status: 500 }
+      );
+    }
+
+    const res = await redis("LRANGE", "results", 0, -1);
+    const raw = res.result || [];
 
     const results = raw.map((item) => {
-      if (typeof item === "string") {
-        try { return JSON.parse(item); } catch { return item; }
-      }
-      return item;
+      try { return JSON.parse(item); } catch { return item; }
     });
 
     return Response.json({
@@ -23,5 +40,4 @@ export async function GET() {
   }
 }
 
-// 캐시 안 함 (항상 최신 데이터)
 export const dynamic = "force-dynamic";
