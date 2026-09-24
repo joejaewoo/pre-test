@@ -53,8 +53,8 @@ export default function AdminPage() {
         const callbackName = "_gsCb" + Date.now();
         const timeout = setTimeout(() => {
           cleanup();
-          reject(new Error("응답 시간 초과 (10초)"));
-        }, 10000);
+          reject(new Error("응답 시간 초과 (30초). 페이지를 새로고침 후 다시 시도해주세요."));
+        }, 30000);
 
         function cleanup() {
           clearTimeout(timeout);
@@ -315,7 +315,7 @@ export default function AdminPage() {
         {loading ? (
           <div style={{ padding: 40, textAlign: "center" }}>
             <div className="spinner" />
-            <p style={{ marginTop: 8, fontSize: 13, color: "var(--gray-500)" }}>불러오는 중...</p>
+            <p style={{ marginTop: 8, fontSize: 13, color: "var(--gray-500)" }}>데이터 불러오는 중... (처음엔 최대 30초 걸릴 수 있습니다)</p>
           </div>
         ) : error ? (
           <div style={{ padding: 40, textAlign: "center", color: "var(--danger)", fontSize: 14 }}>
