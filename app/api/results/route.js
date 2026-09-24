@@ -1,43 +1,27 @@
-const UPSTASH_URL = process.env.KV_REST_API_URL;
-const UPSTASH_TOKEN = process.env.KV_REST_API_TOKEN;
-
-async function redis(...args) {
-  const res = await fetch(`${UPSTASH_URL}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${UPSTASH_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(args),
-  });
-  return res.json();
-}
+export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const url = process.env.KV_REST_API_URL;
+  const token = process.env.KV_REST_API_TOKEN;
+  if (!url || !token) {
+    return Response.json({ success: false, error: "DB가 연결되지 않았습니다 (환경변수 없음)." });
+  }
   try {
-    if (!UPSTASH_URL || !UPSTASH_TOKEN) {
-      return Response.json(
-        { success: false, error: "DB가 연결되지 않았습니다." },
-        { status: 500 }
-      );
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(["LRANGE", "results", 0, -1]),
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (json.error) {
+      return Response.json({ success: false, error: "DB 오류: " + json.error });
     }
-
-    const res = await redis("LRANGE", "results", 0, -1);
-    const raw = res.result || [];
-
-    const results = raw.map((item) => {
+    const results = (json.result || []).map((item) => {
       try { return JSON.parse(item); } catch { return item; }
     });
-
-    return Response.json({
-      success: true,
-      data: results,
-      count: results.length,
-    });
+    return Response.json({ success: true, data: results, count: results.length });
   } catch (err) {
-    console.error("Results error:", err);
-    return Response.json({ success: false, error: err.message }, { status: 500 });
+    return Response.json({ success: false, error: err.message });
   }
 }
-
-export const dynamic = "force-dynamic";

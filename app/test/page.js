@@ -69,10 +69,9 @@ export default function TestPage() {
           };
           sessionStorage.setItem("testResult", JSON.stringify(fullResult));
 
-          // Google Sheets에 전송 (비동기)
-          submitToSheets(fullResult);
-
-          router.push("/result");
+          // 결과 저장이 끝난 뒤 결과 페이지로 이동
+          setCurrentQuestion(null);
+          submitToSheets(fullResult).finally(() => router.push("/result"));
           return;
         }
 
@@ -190,11 +189,15 @@ export default function TestPage() {
  */
 async function submitToSheets(result) {
   try {
-    await fetch("/api/submit", {
+    // keepalive: true → 페이지 이동해도 요청이 끊기지 않음
+    const res = await fetch("/api/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(result), keepalive: true,
+      body: JSON.stringify(result),
+      keepalive: true,
     });
+    const json = await res.json();
+    if (!json.success) console.error("결과 저장 실패:", json.error);
   } catch (e) {
     console.warn("결과 전송 실패:", e);
   }
